@@ -1653,8 +1653,12 @@ static struct ref *do_fetch_pack_v2(struct fetch_pack_args *args,
 				receive_wanted_refs(&reader, sought, nr_sought);
 
 			/* get the pack(s) */
+			if (git_env_bool("GIT_TRACE_REDACT", 1))
+				reader.options |= PACKET_READ_REDACT_URI_PATH;
 			if (process_section_header(&reader, "packfile-uris", 1))
 				receive_packfile_uris(&reader, &packfile_uris);
+			reader.options &= ~PACKET_READ_REDACT_URI_PATH;
+
 			process_section_header(&reader, "packfile", 0);
 
 			/*
