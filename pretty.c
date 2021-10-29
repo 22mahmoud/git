@@ -1275,28 +1275,62 @@ int format_set_trailers_options(struct process_trailer_options *opts,
 
 static size_t parse_describe_args(const char *start, struct strvec *args)
 {
-	const char *options[] = { "match", "exclude" };
+	struct {
+		char *name;
+		enum { OPT_BOOL, OPT_INTEGER, OPT_STRING, } type;
+	}  option[] = {
+		{ "tags", OPT_BOOL},
+		{ "abbrev", OPT_INTEGER },
+		{ "exclude", OPT_STRING },
+		{ "match", OPT_STRING },
+	};
 	const char *arg = start;
 
 	for (;;) {
-		const char *matched = NULL;
+		int found = 0;
 		const char *argval;
 		size_t arglen = 0;
+		int optval = 0;
 		int i;
 
-		for (i = 0; i < ARRAY_SIZE(options); i++) {
-			if (match_placeholder_arg_value(arg, options[i], &arg,
-							&argval, &arglen)) {
-				matched = options[i];
+		for (i = 0; !found && i < ARRAY_SIZE(option); i++) {
+			switch (option[i].type) {
+			case OPT_BOOL:
+				if (match_placeholder_bool_arg(arg, option[i].name, &arg, &optval)) {
+					if (optval)
+						strvec_pushf(args, "--%s", option[i].name);
+					else
+						strvec_pushf(args, "--no-%s", option[i].name);
+					found = 1;
+				}
+				break;
+			case OPT_INTEGER:
+				if (match_placeholder_arg_value(arg, option[i].name, &arg,
+								&argval, &arglen)) {
+					char *endptr;
+					if (!arglen)
+						return 0;
+					strtol(argval, &endptr, 10);
+					if (endptr - argval != arglen)
+						return 0;
+					strvec_pushf(args, "--%s=%.*s", option[i].name, (int)arglen, argval);
+					found = 1;
+				}
+				break;
+			case OPT_STRING:
+				if (match_placeholder_arg_value(arg, option[i].name, &arg,
+								&argval, &arglen)) {
+					if (!arglen)
+						return 0;
+					strvec_pushf(args, "--%s=%.*s", option[i].name, (int)arglen, argval);
+					found = 1;
+				}
 				break;
 			}
 		}
-		if (!matched)
+		if (!found)
 			break;
 
-		if (!arglen)
-			return 0;
-		strvec_pushf(args, "--%s=%.*s", matched, (int)arglen, argval);
 	}
 	return arg - start;
 }
