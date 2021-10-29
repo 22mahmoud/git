@@ -6,30 +6,32 @@ die () {
 }
 
 command_list () {
-	eval "grep -ve '^#' $exclude_programs" <"$1"
-}
-
-get_categories () {
-	tr ' ' '\012'|
-	grep -v '^$' |
-	sort |
-	uniq
+	while read cmd rest
+	do
+		case "$cmd" in
+		"#"*)
+			continue;
+			;;
+		*)
+			case "$exclude_programs" in
+				*":$cmd:"*)
+				;;
+			*)
+				if test -n "$1"
+				then
+					printf "%s\n" $rest
+				else
+					echo "$cmd $rest"
+				fi
+				;;
+			esac
+		esac
+	done
 }
 
 category_list () {
-	command_list "$1" |
-	cut -c 40- |
-	get_categories
-}
-
-get_synopsis () {
-	sed -n '
-		/^NAME/,/'"$1"'/H
-		${
-			x
-			s/.*'"$1"' - \(.*\)/N_("\1")/
-			p
-		}' "Documentation/$1.txt"
+	command_list --no-cat <"$1" |
+	LC_ALL=C sort -u
 }
 
 define_categories () {
@@ -63,24 +65,32 @@ define_category_names () {
 print_command_list () {
 	echo "static struct cmdname_help command_list[] = {"
 
-	command_list "$1" |
+	command_list <"$1" |
 	while read cmd rest
 	do
-		printf "	{ \"$cmd\", $(get_synopsis $cmd), 0"
-		for cat in $(echo "$rest" | get_categories)
+		synopsis=
+		while read line
 		do
-			printf " | CAT_$cat"
-		done
+			case "$line" in
+			"$cmd - "*)
+				synopsis=${line#$cmd - }
+				break
+				;;
+			esac
+		done <"Documentation/$cmd.txt"
+
+		printf '\t{ "%s", N_("%s"), 0' "$cmd" "$synopsis"
+		printf " | CAT_%s" $rest
 		echo " },"
 	done
 	echo "};"
 }
 
-exclude_programs=
+exclude_programs=:
 while test "--exclude-program" = "$1"
 do
 	shift
-	exclude_programs="$exclude_programs -e \"^$1 \""
+	exclude_programs="$exclude_programs$1:"
 	shift
 done
 
