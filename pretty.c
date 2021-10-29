@@ -1218,9 +1218,10 @@ static size_t parse_describe_args(const char *start, struct strvec *args)
 {
 	struct {
 		char *name;
-		enum { OPT_BOOL, OPT_STRING, } type;
+		enum { OPT_BOOL, OPT_INTEGER, OPT_STRING, } type;
 	}  option[] = {
 		{ "tags", OPT_BOOL},
+		{ "abbrev", OPT_INTEGER },
 		{ "exclude", OPT_STRING },
 		{ "match", OPT_STRING },
 	};
@@ -1241,6 +1242,19 @@ static size_t parse_describe_args(const char *start, struct strvec *args)
 						strvec_pushf(args, "--%s", option[i].name);
 					else
 						strvec_pushf(args, "--no-%s", option[i].name);
+					found = 1;
+				}
+				break;
+			case OPT_INTEGER:
+				if (match_placeholder_arg_value(arg, option[i].name, &arg,
+								&argval, &arglen)) {
+					char *endptr;
+					if (!arglen)
+						return 0;
+					strtol(argval, &endptr, 10);
+					if (endptr - argval != arglen)
+						return 0;
+					strvec_pushf(args, "--%s=%.*s", option[i].name, (int)arglen, argval);
 					found = 1;
 				}
 				break;
