@@ -19,8 +19,12 @@ EOF
 }
 
 open_editor() {
-	editor=`git var GIT_EDITOR`
-	eval "$editor -q \$1"
+	if test -t 1; then
+		editor=`git var GIT_EDITOR`
+		eval "$editor -q \$1"
+	else
+		eval "cat \$1"
+	fi
 }
 
 mode_diff() {
