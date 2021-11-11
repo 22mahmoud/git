@@ -84,6 +84,7 @@ static char *opt_edit;
 static char *cleanup_arg;
 static char *opt_ff;
 static char *opt_verify_signatures;
+static char *opt_verify;
 static int opt_autostash = -1;
 static int config_autostash;
 static int check_trust_level = 1;
@@ -160,6 +161,9 @@ static struct option pull_options[] = {
 	OPT_PASSTHRU(0, "ff-only", &opt_ff, NULL,
 		N_("abort if fast-forward is not possible"),
 		PARSE_OPT_NOARG | PARSE_OPT_NONEG),
+	OPT_PASSTHRU(0, "verify", &opt_verify, NULL,
+		N_("control use of pre-merge-commit and commit-msg hooks"),
+		PARSE_OPT_NOARG),
 	OPT_PASSTHRU(0, "verify-signatures", &opt_verify_signatures, NULL,
 		N_("verify that the named commit has a valid GPG signature"),
 		PARSE_OPT_NOARG),
@@ -675,6 +679,8 @@ static int run_merge(void)
 		strvec_pushf(&args, "--cleanup=%s", cleanup_arg);
 	if (opt_ff)
 		strvec_push(&args, opt_ff);
+	if (opt_verify)
+		strvec_push(&args, opt_verify);
 	if (opt_verify_signatures)
 		strvec_push(&args, opt_verify_signatures);
 	strvec_pushv(&args, opt_strategies.v);
@@ -931,6 +937,33 @@ static int get_can_ff(struct object_id *orig_head,
 	return ret;
 }
 
+/*
+ * Is orig_head a descendant of _all_ merge_heads?
+ * Unfortunately is_descendant_of() cannot be used as it asks
+ * if orig_head is a descendant of at least one of them.
+ */
+static int already_up_to_date(struct object_id *orig_head,
+			      struct oid_array *merge_heads)
+{
+	int i;
+	struct commit *ours;
+
+	ours = lookup_commit_reference(the_repository, orig_head);
+	for (i = 0; i < merge_heads->nr; i++) {
+		struct commit_list *list = NULL;
+		struct commit *theirs;
+		int ok;
+
+		theirs = lookup_commit_reference(the_repository, &merge_heads->oid[i]);
+		commit_list_insert(theirs, &list);
+		ok = repo_is_descendant_of(the_repository, ours, list);
+		free_commit_list(list);
+		if (!ok)
+			return 0;
+	}
+	return 1;
+}
+
 static void show_advice_pull_non_ff(void)
 {
 	advise(_("You have divergent branches and need to specify how to reconcile them.\n"
@@ -1072,7 +1105,7 @@ int cmd_pull(int argc, const char **argv, const char *prefix)
 
 	/* ff-only takes precedence over rebase */
 	if (opt_ff && !strcmp(opt_ff, "--ff-only")) {
-		if (!can_ff)
+		if (!can_ff && !already_up_to_date(&orig_head, &merge_heads))
 			die_ff_impossible();
 		opt_rebase = REBASE_FALSE;
 	}
